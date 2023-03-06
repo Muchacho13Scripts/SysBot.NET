@@ -9,6 +9,7 @@ namespace SysBot.Pokemon.WinForms
         {
             SaveFile sav8 = mode switch
             {
+                ProgramMode.LGPE => new SAV7b(),
                 ProgramMode.SWSH => new SAV8SWSH(),
                 ProgramMode.BDSP => new SAV8BS(),
                 ProgramMode.LA   => new SAV8LA(),

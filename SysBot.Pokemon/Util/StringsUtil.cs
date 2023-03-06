@@ -32,22 +32,6 @@ namespace SysBot.Pokemon
         /// <returns>True if spam, false if natural.</returns>
         public static bool IsSpammyString(string text)
         {
-            if (text.IndexOfAny(Blacklist) >= 0)
-                return true;
-
-            if (text.Length <= 6)
-                return false;
-
-            text = text.Replace(" ", "");
-            if (text.Contains("pkm", StringComparison.InvariantCultureIgnoreCase))
-                return true;
-
-            if (TLD.Any(z => text.EndsWith(z, StringComparison.InvariantCultureIgnoreCase)))
-                return true;
-            if (TLD2.Any(z => text.EndsWith(z, StringComparison.InvariantCultureIgnoreCase)))
-                return true;
-            if (TLD.Any(z => text.StartsWith(z, StringComparison.InvariantCultureIgnoreCase)))
-                return true;
             return false;
         }
     }

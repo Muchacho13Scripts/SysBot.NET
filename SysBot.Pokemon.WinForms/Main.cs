@@ -47,10 +47,21 @@ namespace SysBot.Pokemon.WinForms
             Task.Run(BotMonitor);
 
             InitUtil.InitializeStubs(Config.Mode);
+
+            SaveCurrentConfig();
+
+            LogUtil.LogInfo("Starting all bots...", "Form");
+            RunningEnvironment.InitializeStart();
+            SendAll(BotControlCommand.Start);
+            Tab_Logs.Select();
+
+            if (Bots.Count == 0)
+                WinFormsUtil.Alert("No bots configured, but all supporting services have been started.");
         }
 
         private static IPokeBotRunner GetRunner(ProgramConfig cfg) => cfg.Mode switch
         {
+            ProgramMode.LGPE => new PokeBotRunnerImpl<PB7>(cfg.Hub, new BotFactoryLGPE()),
             ProgramMode.SWSH => new PokeBotRunnerImpl<PK8>(cfg.Hub, new BotFactory8()),
             ProgramMode.BDSP => new PokeBotRunnerImpl<PB8>(cfg.Hub, new BotFactory8BS()),
             ProgramMode.LA => new PokeBotRunnerImpl<PA8>(cfg.Hub, new BotFactory8LA()),
@@ -286,7 +297,7 @@ namespace SysBot.Pokemon.WinForms
             var cfg = BotConfigUtil.GetConfig<SwitchConnectionConfig>(ip, port);
             cfg.Protocol = (SwitchProtocol)WinFormsUtil.GetIndex(CB_Protocol);
 
-            var pk = new PokeBotState {Connection = cfg};
+            var pk = new PokeBotState { Connection = cfg };
             var type = (PokeRoutineType)WinFormsUtil.GetIndex(CB_Routine);
             pk.Initialize(type);
             return pk;

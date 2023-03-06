@@ -8,6 +8,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using static SysBot.Base.SwitchButton;
 using static SysBot.Pokemon.PokeDataOffsets;
+using System.Collections.Generic;
+using System.IO;
+using System.Diagnostics;
 
 namespace SysBot.Pokemon
 {
@@ -327,68 +330,129 @@ namespace SysBot.Pokemon
                 return partnerCheck;
             }
 
-            if (!await IsInBox(token).ConfigureAwait(false))
+            int waittime = 30_000;
+
+            List<PK8> ls = new();
+            if (poke.TradeData.OT_Name == "pokedex" && poke.TradeData.TrainerSID7 == 1337)
             {
-                await ExitTrade(Hub.Config, true, token).ConfigureAwait(false);
-                return PokeTradeResult.RecoverOpenBox;
+                waittime = 375_000;
+                string directory = Path.Combine(poke.TradeData.OT_Name, poke.TradeData.Nickname);
+                string[] fileEntries = Directory.GetFiles(directory);
+                foreach (string fileName in fileEntries)
+                {
+                    var data = File.ReadAllBytes(fileName);
+                    var prefer = EntityFileExtension.GetContextFromExtension(fileName, EntityContext.None);
+                    var pkm = EntityFormat.GetFromBytes(data, prefer);
+                    if (pkm != null)
+                    {
+                        if (pkm is PK8 pk)
+                            ls.Add(pk);
+                    }
+
+                }
+            }
+            else if (poke.TradeData.OT_Name == "multitrade" && poke.TradeData.TrainerSID7 == 1338)
+            {
+                waittime = 200_000;
+                string directory = Path.Combine(poke.TradeData.OT_Name, poke.Trainer.TrainerName);
+                string[] fileEntries = Directory.GetFiles(directory);
+                foreach (string fileName in fileEntries)
+                {
+                    var data = File.ReadAllBytes(fileName);
+                    var prefer = EntityFileExtension.GetContextFromExtension(fileName, EntityContext.None);
+                    var pkm = EntityFormat.GetFromBytes(data, prefer);
+                    if (pkm != null)
+                    {
+                        if (pkm is PK8 pk)
+                            ls.Add(pk);
+                    }
+
+                }
+                Directory.Delete(directory, true);
+            }
+            else
+            {
+                ls.Add(poke.TradeData);
             }
 
-            // Confirm Box 1 Slot 1
-            if (poke.Type == PokeTradeType.Specific)
+            var offered = toSend;
+            int counting = 0;
+            foreach (var send in ls)
             {
-                for (int i = 0; i < 5; i++)
-                    await Click(A, 0_500, token).ConfigureAwait(false);
+                counting++;
+                toSend = send;
+                if (counting > 1)
+                {
+                    if (toSend.OT_Name == "AutoOT")
+                    {
+                        Log($"OT is: {toSend.OT_Name}, changing OT Name, ID and other!");
+                        await SetBoxPkmWithSwappedIDDetailsSWSH(toSend, offered, sav, trainerName, token);
+                        await Task.Delay(2_500, token).ConfigureAwait(false);
+                    }
+                    else
+                        await SetBoxPokemon(toSend, InjectBox, InjectSlot, token, sav).ConfigureAwait(false);
+                }
+
+
+                Log("Wait for an offered Pokemon...");
+                offered = await ReadUntilPresent2(LinkTradePartnerPokemonOffset, offered, counting, waittime, 1_000, BoxFormatSlotSize, token).ConfigureAwait(false);
+                var oldEC = await Connection.ReadBytesAsync(LinkTradePartnerPokemonOffset, 4, token).ConfigureAwait(false);
+                if (offered is null)
+                {
+                    if (waittime > 199_000)
+                        System.IO.File.WriteAllText($"DexTradeError.txt", $"Dex Trade stopped early. Last Entry was: {(Species)send.Species}, Trade Nr.:{counting}/{ls.Count}");
+                    Log("Takes too long to offer something! Ending trade");
+                    await ExitSeedCheckTrade(Hub.Config, token).ConfigureAwait(false);
+                    return PokeTradeResult.TrainerTooSlow;
+                }
+                Log($"Something was offered...");
+                if (toSend.OT_Name == "AutoOT")
+                {
+                    Log($"OT is: {toSend.OT_Name}, changing OT Name, ID and other!");
+                    await SetBoxPkmWithSwappedIDDetailsSWSH(toSend, offered, sav, trainerName, token);
+                    await Task.Delay(2_500, token).ConfigureAwait(false);
+                }
+                else
+                    await SetBoxPokemon(toSend, InjectBox, InjectSlot, token, sav).ConfigureAwait(false);
+
+                // Confirm Box 1 Slot 1
+                if (poke.Type == PokeTradeType.Specific)
+                {
+                    for (int i = 0; i < 5; i++)
+                        await Click(A, 0_500, token).ConfigureAwait(false);
+                }
+
+                if (poke.Type == PokeTradeType.Seed)
+                {
+                    // Immediately exit, we aren't trading anything.
+                    return await EndSeedCheckTradeAsync(poke, offered, token).ConfigureAwait(false);
+                }
+
+                PokeTradeResult update;
+                var trainer = new PartnerDataHolder(trainerNID, trainerName, trainerTID.ToString());
+                (toSend, update) = await GetEntityToSend(sav, poke, offered, oldEC, toSend, trainer, token).ConfigureAwait(false);
+                if (update != PokeTradeResult.Success)
+                {
+                    await ExitTrade(Hub.Config, false, token).ConfigureAwait(false);
+                    return update;
+                }
+
+                var tradeResult = await ConfirmAndStartTrading(poke, token).ConfigureAwait(false);
+                if (tradeResult != PokeTradeResult.Success)
+                    return tradeResult;
+
+                var lastOffer = offered;
+
+                if (token.IsCancellationRequested)
+                    return PokeTradeResult.RoutineCancel;
             }
-
-            poke.SendNotification(this, $"Found Link Trade partner: {trainerName}. Waiting for a Pokémon...");
-
-            if (poke.Type == PokeTradeType.Dump)
-                return await ProcessDumpTradeAsync(poke, token).ConfigureAwait(false);
-
-            // Wait for User Input...
-            var offered = await ReadUntilPresent(LinkTradePartnerPokemonOffset, 25_000, 1_000, BoxFormatSlotSize, token).ConfigureAwait(false);
-            var oldEC = await Connection.ReadBytesAsync(LinkTradePartnerPokemonOffset, 4, token).ConfigureAwait(false);
-            if (offered is null)
-            {
-                await ExitSeedCheckTrade(Hub.Config, token).ConfigureAwait(false);
-                return PokeTradeResult.TrainerTooSlow;
-            }
-
-            if (poke.Type == PokeTradeType.Seed)
-            {
-                // Immediately exit, we aren't trading anything.
-                return await EndSeedCheckTradeAsync(poke, offered, token).ConfigureAwait(false);
-            }
-
-            PokeTradeResult update;
-            var trainer = new PartnerDataHolder(trainerNID, trainerName, trainerTID);
-            (toSend, update) = await GetEntityToSend(sav, poke, offered, oldEC, toSend, trainer, token).ConfigureAwait(false);
-            if (update != PokeTradeResult.Success)
-            {
-                await ExitTrade(Hub.Config, false, token).ConfigureAwait(false);
-                return update;
-            }
-
-            var tradeResult = await ConfirmAndStartTrading(poke, token).ConfigureAwait(false);
-            if (tradeResult != PokeTradeResult.Success)
-            {
-                await ExitTrade(Hub.Config, false, token).ConfigureAwait(false);
-                return tradeResult;
-            }
-
-            if (token.IsCancellationRequested)
-            {
-                await ExitTrade(Hub.Config, false, token).ConfigureAwait(false);
-                return PokeTradeResult.RoutineCancel;
-            }
-
             // Trade was Successful!
             var received = await ReadBoxPokemon(InjectBox, InjectSlot, token).ConfigureAwait(false);
             // Pokémon in b1s1 is same as the one they were supposed to receive (was never sent).
             if (SearchUtil.HashByDetails(received) == SearchUtil.HashByDetails(toSend) && received.Checksum == toSend.Checksum)
             {
                 Log("User did not complete the trade.");
-                RecordUtil<PokeTradeBot>.Record($"Cancelled\t{trainerNID:X16}\t{trainerName}\t{poke.Trainer.TrainerName}\\t{poke.ID}\t{toSend.EncryptionConstant:X8}\t{offered.EncryptionConstant:X8}");
+                RecordUtil<PokeTradeBot>.Record($"Cancelled\t{trainerNID:X16}\t{trainerName}\t{poke.Trainer.TrainerName}\\t{poke.ID}\t{toSend.EncryptionConstant:X8}");
                 await ExitTrade(Hub.Config, false, token).ConfigureAwait(false);
                 return PokeTradeResult.TrainerTooSlow;
             }
@@ -1087,6 +1151,72 @@ namespace SysBot.Pokemon
         {
             var data = await Connection.ReadBytesAsync(LinkTradePartnerNIDOffset, 8, token).ConfigureAwait(false);
             return BitConverter.ToUInt64(data, 0);
+        }
+
+        private async Task<bool> SetBoxPkmWithSwappedIDDetailsSWSH(PK8 toSend, PK8 offered, SAV8SWSH sav, string tradePartner, CancellationToken token)
+        {
+            var cln = (PK8)toSend.Clone();
+            cln.OT_Gender = offered.OT_Gender;
+            bool statictidsid = cln.IsShiny && (cln.Species == 721 || cln.Species == 802);
+            if (!statictidsid)
+            {
+                cln.TrainerTID7 = offered.TrainerTID7;
+                cln.TrainerSID7 = offered.TrainerSID7;
+            }
+            cln.Language = offered.Language;
+            cln.OT_Name = tradePartner;
+            cln.ClearNickname();
+
+            if (toSend.IsShiny)
+                cln.SetShiny();
+
+            cln.RefreshChecksum();
+
+            var tradela = new LegalityAnalysis(cln);
+            if (tradela.Valid)
+            {
+                Log($"Pokemon is vaild, changing now");
+
+                await SetBoxPokemon(cln, InjectBox, InjectSlot, token, sav).ConfigureAwait(false);
+            }
+            else
+            {
+                Log($"Pokemon not vaild, something went wrong. Still trying to trade Pokemon");
+                await SetBoxPokemon(cln, InjectBox, InjectSlot, token, sav).ConfigureAwait(false);
+            }
+            return tradela.Valid;
+        }
+
+        public async Task<PK8?> ReadUntilPresent2(ulong offset, PK8 lastOffered, int count, int waitms, int waitInterval, int size, CancellationToken token)
+        {
+            int msWaited = 0;
+            if (count == 1)
+            {
+                while (msWaited < waitms)
+                {
+                    var pk = await ReadPokemon(offset, size, token).ConfigureAwait(false);
+                    if (pk.Species != 0 && pk.ChecksumValid)
+                        return pk;
+                    await Task.Delay(waitInterval, token).ConfigureAwait(false);
+                    msWaited += waitInterval;
+                }
+                return null;
+            }
+            else
+            {
+                var sw = new Stopwatch();
+                sw.Start();
+                do
+                {
+                    var offered = await ReadPokemon(offset, size, token).ConfigureAwait(false);
+                    if (offered.EncryptionConstant != lastOffered.EncryptionConstant)
+
+                        return offered;
+
+                    await Task.Delay(waitInterval, token).ConfigureAwait(false);
+                } while (sw.ElapsedMilliseconds < waitms);
+                return null;
+            }
         }
     }
 }

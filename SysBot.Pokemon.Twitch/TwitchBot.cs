@@ -225,6 +225,11 @@ namespace SysBot.Pokemon.Twitch
                 // User Usable Commands
                 case "trade": return $"@{m.Username}: Wrong command! Type !guide for more help!";
 
+                case "lgpetrade" when typeof(T) == typeof(PB7):
+                case "lgpe" when typeof(T) == typeof(PB7):
+                case "tradelgpe" when typeof(T) == typeof(PB7):
+                case "lgperequest" when typeof(T) == typeof(PB7):
+                case "requestlgpe" when typeof(T) == typeof(PB7):
                 case "swshtrade" when typeof(T) == typeof(PK8):
                 case "swsh" when typeof(T) == typeof(PK8):
                 case "tradeswsh" when typeof(T) == typeof(PK8):

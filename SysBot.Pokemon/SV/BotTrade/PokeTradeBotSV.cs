@@ -414,7 +414,7 @@ namespace SysBot.Pokemon
                 if (toSend.OT_Name == "AutoOT")
                 {
                     Log($"Trying to Auto-OT now!");
-                    await SetBoxPkmWithSwappedIDDetailsPLA(toSend, sav, tradePartner, token).ConfigureAwait(false);
+                    await SetBoxPkmWithSwappedIDDetailsSV(toSend, sav, tradePartner, token).ConfigureAwait(false);
                 }
                 else
                     await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
@@ -1133,7 +1133,7 @@ namespace SysBot.Pokemon
             Comment = $"Added automatically on {DateTime.Now:yyyy.MM.dd-hh:mm:ss} ({comment})",
         };
 
-        private async Task<bool> SetBoxPkmWithSwappedIDDetailsPLA(PK9 toSend, SAV9SV sav, TradePartnerSV tradePartner, CancellationToken token)
+        private async Task<bool> SetBoxPkmWithSwappedIDDetailsSV(PK9 toSend, SAV9SV sav, TradePartnerSV tradePartner, CancellationToken token)
         {
             var cln = toSend.Clone();
             cln.OT_Gender = tradePartner.Gender;

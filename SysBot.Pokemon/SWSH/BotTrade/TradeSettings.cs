@@ -41,6 +41,9 @@ namespace SysBot.Pokemon
         [Category(TradeConfig), Description("When enabled, the screen will be turned off during normal bot loop operation to save power.")]
         public bool ScreenOff { get; set; }
 
+        [Category(TradeConfig), Description("Max amount of time pressing A to wait for a trade to end before trying to exit to overworld.")]
+        public int TradeAnimationMaxDelaySeconds { get; set; } = 90; // 150 maybe
+
         /// <summary>
         /// Gets a random trade code based on the range settings.
         /// </summary>

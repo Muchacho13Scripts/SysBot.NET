@@ -12,6 +12,7 @@ namespace SysBot.Pokemon
 {
     public abstract class PokeRoutineExecutor8LA : PokeRoutineExecutor<PA8>
     {
+        protected const int HidWaitTime = 50;
         protected PokeDataOffsetsLA Offsets { get; } = new();
         protected PokeRoutineExecutor8LA(PokeBotState cfg) : base(cfg)
         {
@@ -97,6 +98,14 @@ namespace SysBot.Pokemon
             return sav;
         }
 
+        public async Task<TradePartnerLA> FetchIDFromOffset(ulong offset, CancellationToken token)
+        {
+            var id = await SwitchConnection.ReadBytesAbsoluteAsync(offset, 4, token).ConfigureAwait(false);
+            var idbytes = await SwitchConnection.ReadBytesAbsoluteAsync(offset + 0x04, 4, token).ConfigureAwait(false);
+            var name = await SwitchConnection.ReadBytesAbsoluteAsync(offset + 0x10, 0x18, token).ConfigureAwait(false);
+            return new TradePartnerLA(id, name, idbytes);
+        }
+
         public async Task InitializeHardware(IBotStateSettings settings, CancellationToken token)
         {
             Log("Detaching on startup.");
@@ -108,9 +117,13 @@ namespace SysBot.Pokemon
             }
         }
 
-        public async Task CleanExit(CancellationToken token)
+        public async Task CleanExit(IBotStateSettings settings, CancellationToken token)
         {
-            await SetScreen(ScreenState.On, token).ConfigureAwait(false);
+            if (settings.ScreenOff)
+            {
+                Log("Turning on screen.");
+                await SetScreen(ScreenState.On, token).ConfigureAwait(false);
+            }
             Log("Detaching controllers on routine exit.");
             await DetachController(token).ConfigureAwait(false);
         }
@@ -118,13 +131,28 @@ namespace SysBot.Pokemon
         protected virtual async Task EnterLinkCode(int code, PokeTradeHubConfig config, CancellationToken token)
         {
             // Default implementation to just press directional arrows. Can do via Hid keys, but users are slower than bots at even the default code entry.
-            var keys = TradeUtil.GetPresses(code);
-            foreach (var key in keys)
-            {
-                int delay = config.Timings.KeypressTime;
-                await Click(key, delay, token).ConfigureAwait(false);
-            }
+            //       var keys = TradeUtil.GetPresses(code);
+            //       foreach (var key in keys)
+            //       {
+            //           int delay = config.Timings.KeypressTime;
+            //           await Click(key, delay, token).ConfigureAwait(false);
+            //       }
             // Confirm Code outside of this method (allow synchronization)
+            char[] codeChars = $"{code:00000000}".ToCharArray();
+            HidKeyboardKey[] keysToPress = new HidKeyboardKey[codeChars.Length + 1];
+            for (int i = 0; i < codeChars.Length; ++i)
+                keysToPress[i] = (HidKeyboardKey)Enum.Parse(typeof(HidKeyboardKey), (int)codeChars[i] >= (int)'A' && (int)codeChars[i] <= (int)'Z' ? $"{codeChars[i]}" : $"D{codeChars[i]}");
+            keysToPress[codeChars.Length] = HidKeyboardKey.Return;
+
+            foreach (var key in keysToPress)
+            {
+                await Connection.SendAsync(SwitchCommand.TypeKey(key), token).ConfigureAwait(false);
+                await Task.Delay(config.Timings.KeypressTime, token).ConfigureAwait(false);
+            }
+
+            //        await Connection.SendAsync(SwitchCommand.TypeMultipleKeys(keysToPress), token).ConfigureAwait(false);
+            await Task.Delay((HidWaitTime * 8) + 0_100, token).ConfigureAwait(false);
+
         }
 
         public async Task ReOpenGame(PokeTradeHubConfig config, CancellationToken token)

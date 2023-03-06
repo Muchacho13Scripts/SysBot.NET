@@ -29,5 +29,7 @@
         /// Amount of time (milliseconds) to sleep between Hid keypresses
         /// </summary>
         keySleepTime,
+
+        controllerType,
     }
 }

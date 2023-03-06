@@ -1,20 +1,36 @@
 ﻿using System;
 using System.Buffers.Binary;
+using System.Text;
+using System.Threading.Tasks;
+using System.Threading;
 using PKHeX.Core;
 
 namespace SysBot.Pokemon
 {
     public sealed class TradePartnerSV
     {
-        public string TID7 { get; }
-        public string SID7 { get; }
+        public uint TID7 { get; }
+        public uint SID7 { get; }
+
+        public string TID { get; }
+        public string SID { get; }
         public string TrainerName { get; }
+
+        public int Game { get; }
+        public int Gender { get; }
+        public int Language { get; }
 
         public TradePartnerSV(TradeMyStatus info)
         {
-            TID7 = info.DisplayTID.ToString("D6");
-            SID7 = info.DisplaySID.ToString("D4");
+            TID = info.DisplayTID.ToString("D6");
+            SID = info.DisplaySID.ToString("D4");
+            TID7 = info.DisplayTID;
+            SID7 = info.DisplaySID;
             TrainerName = info.OT;
+            Game = info.Game;
+            Language = info.Language;
+            Gender = info.Gender;
+
         }
     }
 
@@ -31,4 +47,5 @@ namespace SysBot.Pokemon
 
         public string OT => StringConverter8.GetString(Data.AsSpan(8, 24));
     }
+
 }

@@ -116,12 +116,12 @@ namespace SysBot.Pokemon.Twitch
 
             if (added == QueueResultAdd.AlreadyInQueue)
             {
-                msg = $"@{name}: Sorry, you are already in the queue.";
+                msg = $"@{name}: Sorry, you are already in the {GameAbbreviation()} queue.";
                 return false;
             }
 
             var position = Info.CheckPosition(userID, type);
-            msg = $"@{name}: Added to the {type} queue, unique ID: {detail.ID}. Current Position: {position.Position}";
+            msg = $"@{name}: Added to the {GameAbbreviation()} queue. Current Position: {position.Position}";
 
             var botct = Info.Hub.Bots.Count;
             if (position.Position > botct)
@@ -184,6 +184,22 @@ namespace SysBot.Pokemon.Twitch
             client.SendMessage(channel, response);
         }
 
+        private static string GameAbbreviation()
+        {
+            if (typeof(T) == typeof(PK8))
+                return "SWSH";
+            else if (typeof(T) == typeof(PB8))
+                return "BDSP";
+            else if (typeof(T) == typeof(PA8))
+                return "PLA";
+            else if (typeof(T) == typeof(PK9))
+                return "SV";
+            else if (typeof(T) == typeof(PB7))
+                return "LGPE";
+            else
+                return "";
+        }
+
         private void Client_OnWhisperCommandReceived(object? sender, OnWhisperCommandReceivedArgs e)
         {
             if (!Hub.Config.Twitch.AllowCommandsViaWhisper || Hub.Config.Twitch.UserBlacklist.Contains(e.Command.WhisperMessage.Username))
@@ -202,18 +218,58 @@ namespace SysBot.Pokemon.Twitch
         private string HandleCommand(TwitchLibMessage m, string c, string args, bool whisper)
         {
             bool sudo() => m is ChatMessage ch && (ch.IsBroadcaster || Settings.IsSudo(m.Username));
-            bool subscriber() => m is ChatMessage {IsSubscriber: true};
+            bool subscriber() => m is ChatMessage { IsSubscriber: true };
 
             switch (c)
             {
                 // User Usable Commands
-                case "trade":
-                    var _ = TwitchCommandsHelper<T>.AddToWaitingList(args, m.DisplayName, m.Username, ulong.Parse(m.UserId), subscriber(), out string msg);
+                case "trade": return $"@{m.Username}: Wrong command! Type !guide for more help!";
+
+                case "swshtrade" when typeof(T) == typeof(PK8):
+                case "swsh" when typeof(T) == typeof(PK8):
+                case "tradeswsh" when typeof(T) == typeof(PK8):
+                case "swshrequest" when typeof(T) == typeof(PK8):
+                case "requestswsh" when typeof(T) == typeof(PK8):
+                case "bdsptrade" when typeof(T) == typeof(PB8):
+                case "bdsp" when typeof(T) == typeof(PB8):
+                case "bdsprequest" when typeof(T) == typeof(PB8):
+                case "tradebdsp" when typeof(T) == typeof(PB8):
+                case "requestbdsp" when typeof(T) == typeof(PB8):
+                case "platrade" when typeof(T) == typeof(PA8):
+                case "pla" when typeof(T) == typeof(PA8):
+                case "plarequest" when typeof(T) == typeof(PA8):
+                case "tradepla" when typeof(T) == typeof(PA8):
+                case "requestpla" when typeof(T) == typeof(PA8):
+                case "svtrade" when typeof(T) == typeof(PK9):
+                case "sv" when typeof(T) == typeof(PK9):
+                case "svrequest" when typeof(T) == typeof(PK9):
+                case "tradesv" when typeof(T) == typeof(PK9):
+                case "requestsv" when typeof(T) == typeof(PK9):
+                    _ = TwitchCommandsHelper<T>.AddToWaitingList(args, m.DisplayName, m.Username, ulong.Parse(m.UserId), subscriber(), false, Hub, out string msg);
                     return msg;
+
+                case "swshmulti" when typeof(T) == typeof(PK8):
+                case "swshmultitrade" when typeof(T) == typeof(PK8):
+                case "bdspmulti" when typeof(T) == typeof(PB8):
+                case "bdspmultitrade" when typeof(T) == typeof(PB8):
+                case "plamulti" when typeof(T) == typeof(PA8):
+                case "plamultitrade" when typeof(T) == typeof(PA8):
+                case "svmulti" when typeof(T) == typeof(PK9):
+                case "svmultitrade" when typeof(T) == typeof(PK9):
+                    _ = TwitchCommandsHelper<T>.AddToWaitingList(args, m.DisplayName, m.Username, ulong.Parse(m.UserId), subscriber(), true, Hub, out string msg1);
+                    return msg1;
+
                 case "ts":
-                    return $"@{m.Username}: {Info.GetPositionString(ulong.Parse(m.UserId))}";
+                case "position":
+                case "queue":
+                    return Info.GetPositionString(ulong.Parse(m.UserId)) == "" ? string.Empty : $"@{m.Username}: {Info.GetPositionString(ulong.Parse(m.UserId))}";
+
                 case "tc":
-                    return $"@{m.Username}: {TwitchCommandsHelper<T>.ClearTrade(ulong.Parse(m.UserId))}";
+                case "skip":
+                case "cancel":
+                case "quit":
+                    return TwitchCommandsHelper<T>.ClearTrade(ulong.Parse(m.UserId)) == "" ? string.Empty : $"@{m.Username}: {TwitchCommandsHelper<T>.ClearTrade(ulong.Parse(m.UserId))}";
+
 
                 case "code" when whisper:
                     return TwitchCommandsHelper<T>.GetCode(ulong.Parse(m.UserId));
@@ -224,6 +280,7 @@ namespace SysBot.Pokemon.Twitch
                 case "pc" when !sudo():
                 case "tt" when !sudo():
                 case "tcu" when !sudo():
+                case "status" when !sudo():
                     return "This command is locked for sudo users only!";
 
                 case "tca":
@@ -238,11 +295,16 @@ namespace SysBot.Pokemon.Twitch
 
                 case "tt":
                     return Info.Hub.Queues.Info.ToggleQueue()
-                        ? "Users are now able to join the trade queue."
-                        : "Changed queue settings: **Users CANNOT join the queue until it is turned back on.**";
+                        ? $"Users are now able to join the {GameAbbreviation()} trade queue."
+                        : $"Changed queue settings: **Users CANNOT join the {GameAbbreviation()} queue until it is turned back on.**";
 
                 case "tcu":
                     return TwitchCommandsHelper<T>.ClearTrade(args);
+
+                case "status":
+                    _ = TwitchCommandsHelper<T>.AddToWaitingList("Test (Pikachu)", m.DisplayName, m.Username, ulong.Parse(m.UserId), subscriber(), false, Hub, out string msg99);
+                    return msg99;
+
 
                 default: return string.Empty;
             }
@@ -255,7 +317,7 @@ namespace SysBot.Pokemon.Twitch
             {
                 var removed = QueuePool[0];
                 QueuePool.RemoveAt(0); // First in, first out
-                client.SendMessage(Channel, $"Removed @{removed.DisplayName} ({(Species)removed.Pokemon.Species}) from the waiting list: stale request.");
+                client.SendMessage(Channel, $"Removed @{removed.DisplayName} ({(Species)removed.Pokemon.Species}) from the {GameAbbreviation()} waiting list: stale request.");
             }
 
             var user = QueuePool.FindLast(q => q.UserName == e.WhisperMessage.Username);
